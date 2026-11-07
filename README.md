@@ -1,132 +1,148 @@
 # dsh-hunyuan-forge
 
-把「一张参考图 / 一句话需求」变成「一个能渲染、能导 GLB 的 3D 场景」。
+**Build the blockout yourself. Feed it to Hunyuan3D as the reference image. Auto-place the result back.**
 
-核心思路一句话：**自己搭的白模，就是图生 3D 的输入图。** 轮廓和比例由你控制，
-AI 只负责在轮廓里"长细节"——所以既不会跑偏，也不会像纯手搭那样平。
+Point-cloud-free, text-prompt-free, fully local 3D scene assembly: you control proportions
+in code, an image-to-3D model fills in the detail, and the script puts every generated part
+back exactly where its placeholder was.
 
-![ramen stall](examples/ramen/render.png)
+![blockout vs result](docs/img/compare.png)
 
-> **状态：实验性 / WIP。** 只在一台 Windows 机器、Blender 5.2.3、一个场景上验证过。
-> 代码是原型级，接口会变。别直接拿去当生产工具。
+English · [简体中文](README.zh.md)
 
----
-
-## 它解决什么问题
-
-本地跑 Hunyuan3D 时，最常见的尴尬：**它只吃图，不吃文字**。
-直接文生 3D 要额外的 T2I 权重（HunyuanDiT，几个 GB），还要和 shape 模型抢显存。
-
-另一条路是：先用手搭的白模把**结构**定死，渲一张标准参考图喂给它，
-再把出来的白模**按占位体的位置和尺寸自动摆回去**。这条路人少，但可控、可复现、全离线。
-
-```
-参考图 / 需求
-   │  ① 拆解：资产清单（尺寸、位置、谁做）
-   ▼
-参数化结构（自己搭） + 占位体（混元的输入）
-   │  ② 每个占位体渲一张标准 3/4 图（灰底、无地面、撑满画幅）
-   ▼
-Hunyuan3D img2mesh ──► 白模 GLB（只负责"长肉"）
-   │  ③ 导入 / 清碎屑 / 减面 / 等比归一 / 落地 / 按 at+rot 对齐
-   ▼
-摆好的场景 ──► ④ 程序化材质 ──► ⑤ 布光出图 ──► ⑥ 导出 GLB
-```
-
-## 和"直接文生 3D"的区别
-
-| | 本仓库 | 纯文生 3D |
-|---|---|---|
-| 输入 | 你控制的白模渲染图 | 一段文字 |
-| 比例/构图 | 精确，按米 | 随机，靠抽卡 |
-| 细节 | 由占位体轮廓决定，偏简 | 依赖 T2I 想象 |
-| 离线 | ✅ 全本地 | 通常要额外 T2I 权重 |
-| 场景拼装 | ✅ 多件自动归位 | 一般只出单件 |
-
-> 想要更丰富的表面细节，社区做法是中间插一步 **depth-ControlNet 文生图**
-> （见 [Tenitsky 的指南](https://tenitsky.com/guides/simple-3d-shapes-to-tank-concepts/)）：
-> 白模 → 概念图 → img2mesh。本仓库把这一步做成了可选项（`src=t2i`），默认跳过以保持离线。
+> **Status: experimental / WIP.** Verified on one Windows machine, Blender 5.2.3, one scene.
+> Prototype-grade code; interfaces will change. Not a production tool.
 
 ---
 
-## 依赖
+## The problem
 
-| 组件 | 要求 | 说明 |
+Local Hunyuan3D takes an image, not a prompt. Text-to-3D needs a separate T2I checkpoint
+(HunyuanDiT, several GB) that competes with the shape model for VRAM — on an 8 GB card that
+trade is rarely worth it.
+
+So most people either accept "prompt roulette" or hand-model everything.
+
+This repo takes a third path: **the blockout is the image.**
+
+```
+reference / brief
+      │  ① decompose into an asset list (size, position, who builds it)
+      ▼
+parametric structure (code) + placeholders (the model's input)
+      │  ② render one canonical 3/4 view per placeholder (grey, no floor, full frame)
+      ▼
+Hunyuan3D img2mesh ──► white mesh GLB (it only adds surface detail)
+      │  ③ import / clean / decimate / normalise / drop to floor / place by at+rot
+      ▼
+assembled scene ──► ④ procedural materials ──► ⑤ light & render ──► ⑥ export GLB
+```
+
+Because the silhouette comes from geometry you placed, the result lands at the right size,
+the right position and the right orientation — no manual rescaling in Blender.
+
+## How it compares
+
+| | this repo | prompt-to-3D |
 |---|---|---|
-| **Blender** | 5.2.x（在 5.2.3 验证） | 建结构、渲参考图、归位、出图。4.2+ 应该也能跑，未验证 |
-| **Python** | 3.10+ | 只用来跑 `gen_props.py`（需要 `requests`），不占用 Blender |
-| **Hunyuan3D** | 本地 Hunyuan3D-2 **mini/turbo** 整合包 | 详见 [docs/hunyuan-deploy.md](docs/hunyuan-deploy.md) |
-| **桥接** | 本仓库 `bridge/server.py` | 8081 单次 POST → GLB 字节；见 [docs/bridge.md](docs/bridge.md) |
-| 可选 | [DSH](https://github.com/) + `dsh-blender-plugin` | 让 AI agent 直接驱动 Blender；不用也能全程命令行 |
+| Input | a blockout you control | a sentence |
+| Proportions | exact, metric | random |
+| Detail | limited by the blockout silhouette | imagined by the T2I model |
+| Offline | ✅ fully local | usually needs an extra T2I checkpoint |
+| Whole scene | ✅ many parts auto-placed | usually one asset at a time |
 
-只想要脚本、已经有一套 img2mesh 服务？把 `HY3D_BRIDGE` 指向你自己的 `/generate` 实现即可。
+> For richer surface detail, the community approach inserts a **depth-ControlNet T2I** step
+> (see [Tenitsky's guide](https://tenitsky.com/guides/simple-3d-shapes-to-tank-concepts/)):
+> blockout → concept art → img2mesh. This repo exposes that as an optional `src=t2i` source
+> but skips it by default, to stay offline.
 
-## 快速开始
+---
+
+## Requirements
+
+| Component | Version | Notes |
+|---|---|---|
+| **Blender** | 5.2.x (tested 5.2.3) | builds geometry, renders references, places results |
+| **Python** | 3.10+ | only for `gen_props.py` (`requests`) |
+| **Hunyuan3D** | local **Hunyuan3D-2 mini/turbo** bundle | see [docs/hunyuan-deploy.md](docs/hunyuan-deploy.md) |
+| **Bridge** | `bridge/server.py` in this repo | one POST → GLB bytes; see [docs/bridge.md](docs/bridge.md) |
+| optional | DSH + `dsh-blender-plugin` | lets an agent drive Blender; not required |
+
+Already have an img2mesh service? Point `HY3D_BRIDGE` at anything implementing
+`POST /generate` (base64 image → `model/gltf-binary`) and `GET /health`.
+
+## Quick start
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/apple-pie99/dsh-hunyuan-forge.git
 cd dsh-hunyuan-forge/examples/ramen
 ```
 
-**① 起 Hunyuan（8080）+ 桥接（8081）**，确认：
+**① start Hunyuan3D (8080) and the bridge (8081)**
 
 ```bash
 curl http://127.0.0.1:8081/health   # {"ok": true, "upstream": "http://127.0.0.1:8080"}
 ```
 
-**② 搭结构 + 出参考图（Blender）**
+**② build the structure + reference images**
 
 ```bash
 blender -b -P run_build.py
 ```
 
-产出 `stall_base.blend` 和 `shots/*.png`。**先看 shots/ 里的图**——不像就别往下走。
+Look at `shots/*.png` before spending GPU time. If they don't read as the object, fix the
+blockout — not the generator.
 
-**③ 生成（系统 Python，后台跑不卡界面）**
+**③ generate (system Python, so Blender stays responsive)**
 
 ```bash
 python gen_props.py
 ```
 
-4 件道具，每件约 6 秒。
-
-**④ 归位 + 材质 + 渲染 + 导出**
+**④ place + materials + render + export**
 
 ```bash
 blender -b stall_base.blend -P run_place.py
 ```
 
-产出 `render.png`、`stall.blend`、`stall.glb`（可直接丢 three.js）。
+Outputs `render.png`, `stall.blend`, `stall.glb` (drop it into three.js).
 
-## 目录
+Or run all three with the helper:
+
+```powershell
+.\run.ps1                     # finds Blender, checks the bridge, runs ②③④
+.\run.ps1 -Blender "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+```
+
+## Repository layout
 
 ```
-forge/                核心库（不依赖示例）
-├─ forge.py           建占位体 / 渲参考图 / 调桥接 / 归位
-├─ scene_spec.py      清单校验 + 难度路由（纯 Python，可单测）
-└─ rich_mats.py       程序化 PBR 材质（木/钢/纸/布/水泥/玻璃/瓷）
-bridge/server.py      8081 适配层：REST → Hunyuan Gradio
+forge/                 core library (scene-agnostic)
+├─ forge.py            placeholders / reference renders / bridge client / placement
+├─ scene_spec.py       spec validation + difficulty routing (pure Python, unit-tested)
+└─ rich_mats.py        procedural PBR materials (wood / steel / paper / cloth / concrete)
+bridge/server.py       8081 adapter: REST → Hunyuan Gradio
 docs/
-├─ workflow.md        六步法（怎么做、怎么判断）
-├─ pitfalls.md        Blender/glTF/EEVEE 的 10 个坑
-├─ hunyuan-deploy.md  本机部署版本、参数、性能、许可
-└─ bridge.md          桥接是什么、为什么需要、怎么替换
-examples/ramen/       完整示例：日式拉面摊
+├─ workflow.md         the six steps, with pass/fail criteria
+├─ pitfalls.md         10 Blender/glTF/EEVEE gotchas we actually hit
+├─ hunyuan-deploy.md   exact local deployment, limits, performance, licence
+└─ bridge.md           what the bridge is, its security boundary, how to replace it
+examples/ramen/        complete worked example: a Japanese street noodle stall
 ```
 
-## 局限（先说清楚）
+## Limitations
 
-- **程序化材质不进 GLB**：three.js 只认贴图，要带质感得先烘焙（UV + Cycles）。
-- **没有 PBR 法线贴图**：近看纹理有重复。
-- **单图没有背面**：生成的模型转一圈会穿帮。
-- **只验证过一个场景**：复杂场景（植被、布料、人物）没试过。
-- **Windows only**：路径与启动脚本按 Windows 写的。
+- **Procedural materials don't survive GLB export** — three.js only takes textures; bake first.
+- **No PBR normal maps**: procedural grain repeats up close.
+- **One image, no back side**: generated meshes break down when seen from behind.
+- **One scene tested**: vegetation, cloth and characters are untried.
+- **Windows-oriented**: scripts assume Windows paths.
 
-## 许可与合规
+## Licence
 
-- **代码**：[MIT](LICENSE)。
-- **示例场景与渲染图**：CC BY 4.0。
-- **本仓库不包含任何模型权重**。Hunyuan3D 由你自己部署，遵循
-  [TENCENT HUNYUAN 3D 2.0 COMMUNITY LICENSE](https://github.com/Tencent-Hunyuan/Hunyuan3D-2)：
-  个人与商用免版税，但**欧盟、英国、韩国不在授权范围内**；月活 > 100 万需单独申请；不得使用腾讯商标。
-- 示例里**没有**任何第三方图片素材，`shots/` 与 `render.png` 全部由脚本生成。
+- **Code**: [MIT](LICENSE).
+- **Example assets** (`examples/**`): CC BY 4.0 — see [NOTICE](NOTICE).
+- **No model weights are distributed here.** Hunyuan3D runs locally under the
+  TENCENT HUNYUAN 3D 2.0 COMMUNITY LICENSE: royalty-free for personal and commercial use,
+  but **not licensed in the EU, UK or South Korea**; >1M MAU needs separate permission;
+  no Tencent trademarks.

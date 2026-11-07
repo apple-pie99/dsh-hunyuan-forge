@@ -9,14 +9,13 @@
 ```bash
 # 0. 起好 Hunyuan（8080）和桥接（8081），curl http://127.0.0.1:8081/health 返回 ok
 
-# 1. 搭结构 + 出参考图（约 3 秒 + 每件 0.2 秒）
-blender -b -P run_build.py
+# 一条命令跑完（Windows）
+.\run.ps1
 
-# 2. 生成 4 件道具（约 25 秒）
-python gen_props.py
-
-# 3. 归位 + 材质 + 渲染 + 导出（约 8 秒）
-blender -b stall_base.blend -P run_place.py
+# 或者分三步
+blender -b -P run_build.py      # ① 搭结构 + 出参考图（约 3 秒 + 每件 0.2 秒）
+python gen_props.py             # ② 生成 4 件道具（约 25 秒）
+blender -b stall_base.blend -P run_place.py   # ③ 归位 + 渲染 + 导出（约 8 秒）
 ```
 
 产物：`render.png`、`stall.blend`、`stall.glb`。
