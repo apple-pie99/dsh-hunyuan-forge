@@ -1,0 +1,28 @@
+# NOTICE
+
+## 示例资产
+
+`examples/` 下的图片、.blend、.glb 由本仓库脚本生成，采用
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。
+与代码的 MIT 许可相互独立。
+
+## 第三方模型与权重
+
+本仓库**不包含**任何模型权重。`bridge/` 与 `forge/` 只是本地服务的客户端。
+
+Hunyuan3D 的模型与权重遵循 TENCENT HUNYUAN 3D 2.0 COMMUNITY LICENSE：
+
+- 个人与商用免版税
+- 欧盟、英国、韩国不在授权范围内
+- 月活用户 > 100 万需向腾讯单独申请
+- 不得使用腾讯商标
+
+部署与使用时的合规责任由使用者承担。官方仓库：
+<https://github.com/Tencent-Hunyuan/Hunyuan3D-2>
+
+## 方法出处
+
+"用 3D blockout 控制图生 3D"的思路参考了 Anton Tenitsky 的指南
+<https://tenitsky.com/guides/simple-3d-shapes-to-tank-concepts/>，
+区别在于本仓库直接在本地做"白模 → 参考图 → img2mesh → 自动归位"，
+不经过 depth-ControlNet 文生图这一步。
