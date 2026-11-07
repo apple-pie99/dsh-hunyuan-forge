@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Blender
+*.blend1
+*.blend2
+
+# 示例的中间产物（可以重新生成，别占仓库体积）
+examples/*/shots/
+examples/*/glb/
+examples/*/stall_base.blend
+examples/*/stall.blend
+examples/*/stall.glb
+examples/*/gen_report.json
+out/
+
+# OS
+.DS_Store
+Thumbs.db

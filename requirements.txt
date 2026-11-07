@@ -1,0 +1,2 @@
+# 只需要生成脚本用；Blender 侧零依赖（bpy 自带）
+requests>=2.31
