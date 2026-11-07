@@ -1,117 +1,123 @@
-# 六步法
+# The six steps
 
-这份文档是"怎么做"的操作顺序，不是概念介绍。每一步都写清输入、输出、判断标准。
+This is the operational order, not a concept piece. Each step lists its input, output and
+pass criterion.
+
+English · [简体中文](workflow.zh.md)
 
 ---
 
-## Step 1 · 拆解（只出清单，不动软件）
+## Step 1 · Decompose (paper only, no software)
 
-从参考图里读四件事：**尺度、构件、材质、光位**。然后给每件资产定：
+Read four things off the reference: **scale, parts, materials, lighting**. Then give every
+asset:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `id` | 唯一名，占位体叫 `BO_<id>`，成品叫 `AS_<id>` |
-| `size` | 目标外接盒，单位米 |
-| `at` | **底面中心**的世界坐标（不是几何中心） |
-| `rot` | 绕 Z 轴角度，0 = 正面朝 -Y |
-| `method` | `build`（自己搭）/ `hy3d`（交给模型） |
+| `id` | unique name; placeholder is `BO_<id>`, result is `AS_<id>` |
+| `size` | target bounding box, metres |
+| `at` | world position of the **bottom-centre** (not the geometric centre) |
+| `rot` | rotation around Z, 0 = front faces -Y |
+| `method` | `build` (you) or `hy3d` (the model) |
 
-先把清单发给人确认，**再动 Blender**。清单错，后面全是返工。
+Send the list for review **before** touching Blender. A wrong list means redoing everything.
 
-判断标准：一个外行看图能数出几件大东西，你至少拆出那么多件。
+Pass criterion: a layperson can count the big objects in the picture; you have at least that many.
 
-## Step 2 · 结构（自己搭的部分）
+## Step 2 · Structure (the part you build)
 
-看一眼 `examples/ramen/build_stall.py`——三个原语够用了：
+See `examples/ramen/build_stall.py` — three primitives cover most of it:
 
-- `box(name, size, at, material)`：板、柱、台面
-- `cyl(name, r, h, at, material)`：锅、碗、灯笼、凳面
-- `frustum(name, bottom, top, z0, z1, at, material)`：雨棚这种四棱台
+- `box(name, size, at, material)` — boards, posts, counter tops
+- `cyl(name, r, h, at, material)` — pots, bowls, lanterns, stool seats
+- `frustum(name, bottom, top, z0, z1, at, material)` — canopies, tapered volumes
 
-约定：
+Conventions:
 
-- 单位米，Z 向上，正面朝 **-Y**，地面 `z=0`
-- 材质按用途命名（`ST_wood` / `P_steel`），因为材质是按名字缓存的
-- 细节靠"加法"：台面下的竖板条、货架边条、柱脚铁件、灯笼竹骨
+- metres, Z up, front faces **-Y**, ground at `z=0`
+- materials named by purpose (`ST_wood`, `P_steel`) — materials are cached by name
+- detail comes from addition: plank strips under the counter, shelf edging, post shoes,
+  lantern ribs
 
-**判断标准**：不加材质、只开线框，也能看出这是个什么东西。
+Pass criterion: with no materials, in wireframe, a stranger can still tell what it is.
 
-## Step 3 · 占位体 + 参考图
+## Step 3 · Placeholders + reference renders
 
 ```python
 import sys; sys.path.insert(0, "<repo>/forge")
 import forge, scene_spec
 spec = scene_spec.resolve(scene_spec.load("props.json"))
-forge.stage_frame(spec, reset=False)   # 建 BO_<id>
-forge.stage_shot(spec, out=".")        # 每件渲 1024² 参考图
+forge.stage_frame(spec, reset=False)   # builds BO_<id>
+forge.stage_shot(spec, out=".")        # 1024² reference per part
 ```
 
-要点：
+- **one part per image** — two objects, occlusion or a busy background degrade quality fast
+- **compound placeholders (`parts`) beat a single box**: a pot = body + lid + two handles
+- grey background, no floor, ~85% frame fill, fixed 3/4 view (azimuth 25°, elevation 18°)
 
-- **一件一图**。一张图里两件东西、遮挡、花背景，质量断崖式下跌
-- 复合占位体（`parts`）远好于单个盒子：锅 = 筒身 + 盖 + 双耳；纸箱 = 箱体 + 两片翻盖
-- 灰底、无地面、撑满约 85% 画幅、固定 3/4 视角（方位 25°、俯角 18°）
+Pass criterion: show `shots/xx.png` to someone who never saw the brief — they can name the object.
 
-**判断标准**：把 `shots/xx.png` 给一个没看过需求的人看，他能说出这是什么。
-
-## Step 4 · 生成
+## Step 4 · Generate
 
 ```bash
-python gen_props.py            # 系统 Python，4 件约 25 秒
+python gen_props.py            # system Python; 4 parts ≈ 25 s
 ```
 
-- `octree 128–160`、`steps 5`、`guidance 5.0`、串行
-- 失败一次就重试；还失败，改占位体，别调参
+- `octree 128–160`, `steps 5`, `guidance 5.0`, serial
+- retry once on failure; if it fails again, change the placeholder, not the knobs
 
-**判断标准**：`glb/` 里文件都是几 MB（不是几百字节），生成日志没有 FAIL。
+Pass criterion: every file in `glb/` is megabytes (not hundreds of bytes), no FAIL in the log.
 
-## Step 5 · 归位
+## Step 5 · Place
 
 ```python
 forge.stage_place(spec, out=".")
 ```
 
-内部顺序：join → 焊点 → 删 <100 面的碎屑 → 减面到 2 万 → 等比归一（最大边对齐 `size`）
-→ 底面中心落到原点 → 按 `at`/`rot` 摆 → 删占位体。
+Internally: join → weld → drop shells <100 faces → decimate to 20k → uniform normalise
+(largest edge matches `size`) → bottom-centre to origin → position by `at`/`rot` → delete
+the placeholder.
 
-**判断标准**：渲染里每件都站在它该站的位置上，没有穿地、没有悬空、比例和清单差 < 10%。
+Pass criterion: everything stands where it should, nothing sinks or floats, size error < 10%.
 
-## Step 6 · 材质 / 布光 / 出图
+## Step 6 · Materials / lighting / output
 
 ```python
 import rich_mats
 M = rich_mats.make_all()
 ```
 
-- 程序化材质用 **Object 坐标**：不需要 UV，复制物体不错位，改尺寸不拉伸
-- 木纹分方向：竖板 `axis="z"`，台面 `axis="x"`
-- 布光：冷色三点光 + 场景内暖光点光；`Standard` 视图变换
-- 出图：EEVEE，1600×900
+- procedural materials use **Object coordinates**: no UVs, no stretching when resized,
+  no drift when duplicated
+- wood grain direction matters: vertical boards `axis="z"`, counter tops `axis="x"`
+- lighting: cool three-point key/fill/rim + warm point lights inside the stall;
+  `Standard` view transform
+- output: EEVEE, 1600×900
 
-**判断标准**：缩小到 25% 看，木是木、钢是钢、布是布。
+Pass criterion: at 25% zoom, wood reads as wood, steel as steel, cloth as cloth.
 
 ---
 
-## 什么时候不交给模型
+## When not to use the model
 
-| 情况 | 做法 | 理由 |
+| Situation | Do | Why |
 |---|---|---|
-| 建筑、框架、台面、栏杆、管、板 | 自己搭 | 参数化又快又准 |
-| 最大边 ≥ 4m | 自己搭 | 大尺度比例漂移明显 |
-| 最薄处 < 2cm 或薄/长 < 6% | 自己搭 | 板片会被糊成一坨 |
-| 锅、箱、筐、石头、植被、机械零件 | 交给模型 | 有轮廓但不规则，正好 |
-| 回转体（灯笼、碗、瓶、盖） | 自己搭 | 模型出的回转体歪、糊 |
+| buildings, frames, counters, rails, pipes, boards | build it | parametric is faster and exact |
+| longest edge ≥ 4 m | build it | large-scale proportion drifts |
+| thinnest part < 2 cm, or thin/long < 6% | build it | plates turn to mush |
+| pots, crates, baskets, rocks, plants, machine parts | generate | clear silhouette, irregular form |
+| surfaces of revolution (lanterns, bowls, bottles, lids) | build it | generated ones come out crooked |
 
-`scene_spec.route()` 会先跑一遍给建议，但**最终以人看着像不像为准**。
+`scene_spec.route()` gives a first guess, but **the human eye decides**.
 
-## 时间账（8GB 显存 / 24GB 内存，实测）
+## Time budget (8 GB VRAM / 24 GB RAM, measured)
 
-| 步骤 | 耗时 |
+| Step | Time |
 |---|---|
-| 结构 + 布景 | ~1 秒 |
-| 出参考图 | 每件 ~0.2 秒，10 件约 2 秒 |
-| 生成 | 每件 6–10 秒 |
-| 归位 | 每件 1–2 秒 |
-| 渲染 | 1600×900 约 2–4 秒 |
+| structure + staging | ~1 s |
+| reference renders | ~0.2 s each, ~2 s for 10 |
+| generation | 6–10 s each |
+| placement | 1–2 s each |
+| render 1600×900 | 2–4 s |
 
-一个 10 件的场景，从头到尾 5–10 分钟（不含调材质的时间）。
+A 10-part scene: 5–10 minutes end to end, excluding material tweaking.

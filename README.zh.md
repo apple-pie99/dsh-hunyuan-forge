@@ -60,8 +60,8 @@ Hunyuan3D img2mesh ──► 白模 GLB（只负责"长肉"）
 |---|---|---|
 | **Blender** | 5.2.x（5.2.3 验证） | 搭结构、渲参考图、归位 |
 | **Python** | 3.10+ | 只给 `gen_props.py` 用（需要 `requests`） |
-| **Hunyuan3D** | 本地 **Hunyuan3D-2 mini/turbo** 整合包 | 见 [docs/hunyuan-deploy.md](docs/hunyuan-deploy.md) |
-| **桥接** | 本仓库 `bridge/server.py` | 一次 POST 拿 GLB；见 [docs/bridge.md](docs/bridge.md) |
+| **Hunyuan3D** | 本地 **Hunyuan3D-2 mini/turbo** 整合包 | 见 [docs/hunyuan-deploy.zh.md](docs/hunyuan-deploy.zh.md) |
+| **桥接** | 本仓库 `bridge/server.py` | 一次 POST 拿 GLB；见 [docs/bridge.zh.md](docs/bridge.zh.md) |
 | 可选 | DSH + `dsh-blender-plugin` | 让 agent 直接驱动 Blender；不用也能全命令行 |
 
 已经有自己的 img2mesh 服务？把 `HY3D_BRIDGE` 指向任何实现了
